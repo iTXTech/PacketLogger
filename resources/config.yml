@@ -27,3 +27,8 @@ filters:
   #0xba: false # CraftingDataPacket
   #0xbf: false # FullChunkDataPacket
   #0xc3: false # PlayerListPacket
+
+packet-blocking:
+ default: false #No packets blocked by default
+ #Possible values: in (from client), out (to client), all, false
+ #0xff: all # will block packets with specified ID

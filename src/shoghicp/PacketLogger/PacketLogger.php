@@ -27,6 +27,9 @@ class PacketLogger extends PluginBase implements Listener{
 	private $packetIdFilter = [];
 	private $packetIdDefault = true;
 
+	private $blockedPackets = [];
+	private $blockDefault = false;
+
 	public function onEnable(){
 		$this->saveDefaultConfig();
 		$config = $this->getConfig();
@@ -65,6 +68,15 @@ class PacketLogger extends PluginBase implements Listener{
 			}
 		}
 
+		$blocks = $config->get("packet-blocking");
+		$this->blockDefault = (bool) ($blocks["default"] ?? false);
+		foreach($blocks as $id => $value){
+			if($id == "default"){
+				continue;
+			}
+			$this->blockedPackets[(int) $id] = $value;
+		}
+
 		$this->getServer()->getPluginManager()->registerEvents($this, $this);
 	}
 
@@ -83,20 +95,20 @@ class PacketLogger extends PluginBase implements Listener{
 		return $this->packetIdDefault;
 	}
 
-	private function logInboundPacket(Player $player, DataPacket $packet){
+	private function logInboundPacket(Player $player, DataPacket $packet, bool $blocked){
 		if($this->isPacketAllowed($packet)){
 			$packet->encode(); //other plugins might have changed the packet
-			$header = "[Client -> Server 0x".dechex($packet->pid())."] ".(new \ReflectionClass($packet))->getShortName() . " (length ".strlen($packet->buffer).")";
+			$header = ($blocked? "[BLOCKED]": "") . "[Client -> Server 0x".dechex($packet->pid())."] ".(new \ReflectionClass($packet))->getShortName() . " (length ".strlen($packet->buffer).")";
 			$fields = $this->getFields($packet);
 			$binary = trim(Utils::hexdump($packet->buffer));
 			fwrite($this->sessions[spl_object_hash($player)], $header . PHP_EOL . $binary . PHP_EOL . $fields . PHP_EOL . PHP_EOL . PHP_EOL);
 		}
 	}
 
-	private function logOutboundPacket(Player $player, DataPacket $packet){
+	private function logOutboundPacket(Player $player, DataPacket $packet, bool $blocked){
 		if($this->isPacketAllowed($packet)){
 			$packet->encode(); //needed :(
-			$header = "[Server -> Client 0x".dechex($packet->pid())."] ".(new \ReflectionClass($packet))->getShortName() . " (length ".strlen($packet->buffer).")";
+			$header = ($blocked? "[BLOCKED]": "") . "[Server -> Client 0x".dechex($packet->pid())."] ".(new \ReflectionClass($packet))->getShortName() . " (length ".strlen($packet->buffer).")";
 			$fields = $this->getFields($packet);
 			$binary = trim(Utils::hexdump($packet->buffer));
 			fwrite($this->sessions[spl_object_hash($player)], $header . PHP_EOL . $binary . PHP_EOL . $fields . PHP_EOL . PHP_EOL . PHP_EOL);
@@ -177,7 +189,13 @@ class PacketLogger extends PluginBase implements Listener{
 		$player = $event->getPlayer();
 		$packet = $event->getPacket();
 		if(isset($this->sessions[spl_object_hash($player)])){
-			$this->logInboundPacket($player, $packet);
+			$blockPref = $this->blockedPackets[$packet::NETWORK_ID] ?? $this->blockDefault;
+			$blocked = false;
+			if($blockPref == "all" or $blockPref == "in"){
+				$event->setCancelled();
+				$blocked = true;
+			}
+			$this->logInboundPacket($player, $packet, $blocked);
 		}elseif($packet instanceof LoginPacket){
 			$name = strtolower($packet->username);
 			$clientId = $packet->clientId;
@@ -207,9 +225,10 @@ class PacketLogger extends PluginBase implements Listener{
 				$this->sessions[spl_object_hash($player)] = fopen($path, "w+b");
 				$this->getLogger()->info("Logging packets from ".$player->getName()."[/".$player->getAddress().":".$player->getPort()."], clientId ".$clientId);
 				$this->writeHeader($this->sessions[spl_object_hash($player)], $name, $clientId, $player);
-				$this->logInboundPacket($player, $packet);
+				$this->logInboundPacket($player, $packet, false);
 			}
 		}
+		
 	}
 
 	/**
@@ -221,7 +240,14 @@ class PacketLogger extends PluginBase implements Listener{
 	public function onOutboundPacket(DataPacketSendEvent $event){
 		$player = $event->getPlayer();
 		if(isset($this->sessions[spl_object_hash($player)])){
-			$this->logOutboundPacket($player, $event->getPacket());
+			$packet = $event->getPacket();
+			$blockPref = $this->blockedPackets[$packet::NETWORK_ID] ?? $this->blockDefault;
+			$blocked = false;
+			if($blockPref == "all" or $blockPref == "out"){
+				$event->setCancelled();
+				$blocked = true;
+			}
+			$this->logOutboundPacket($player, $event->getPacket(), $blocked);
 		}
 	}
 }
