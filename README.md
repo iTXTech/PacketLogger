@@ -2,10 +2,10 @@
 Log network packets as you want.
 
 ## Usage
-- Download the latest version for your API from [releases](https://github.com/PocketMine/PacketLogger/releases).
+- Download the latest version for your API from [releases](https://github.com/iTXTech/PacketLogger/releases).
 - Place the .phar in the plugins directory
 - Start and stop the server to generate the default config file
-- Edit the ```config.yml``` ([validate yaml](http://codebeautify.org/yaml-validator]))
+- Edit the ```config.yml```
 - Start the server and connect. The logs are located in the `plugins/PacketLogger/` directory.
 
 ## Example config
